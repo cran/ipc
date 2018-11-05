@@ -12,7 +12,7 @@
 
 <meta name="author" content="Ian Fellows" />
 
-<meta name="date" content="2018-09-10" />
+<meta name="date" content="2018-11-05" />
 
 <title>Tools for Inter-Process Communication</title>
 
@@ -70,13 +70,13 @@ code > span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Inf
 
 <h1 class="title toc-ignore">Tools for Inter-Process Communication</h1>
 <h4 class="author"><em>Ian Fellows</em></h4>
-<h4 class="date"><em>2018-09-10</em></h4>
+<h4 class="date"><em>2018-11-05</em></h4>
 
 
 
 <div id="introduction" class="section level2">
 <h2>Introduction</h2>
-<p>ipc provides methods for inter-process communication useful when developing Shiny applications that use asynchronous processing.</p>
+<p><code>ipc</code> provides methods for inter-process communication useful when developing Shiny applications that use asynchronous processing.</p>
 </div>
 <div id="quick-start" class="section level2">
 <h2>Quick Start</h2>
@@ -224,6 +224,7 @@ server &lt;-<span class="st"> </span><span class="cf">function</span>(input, out
 <div class="sourceCode"><pre class="sourceCode r"><code class="sourceCode r"><span class="kw">library</span>(shiny)
 <span class="kw">library</span>(ipc)
 <span class="kw">library</span>(future)
+<span class="kw">library</span>(promises)
 <span class="kw">plan</span>(multiprocess)
 
 ui &lt;-<span class="st"> </span><span class="kw">fluidPage</span>(
@@ -388,6 +389,54 @@ server &lt;-<span class="st"> </span><span class="cf">function</span>(input, out
 <span class="co"># Run the application</span>
 <span class="kw">shinyApp</span>(<span class="dt">ui =</span> ui, <span class="dt">server =</span> server)</code></pre></div>
 </div>
+</div>
+<div id="use-in-hpc-environments" class="section level2">
+<h2>Use in HPC Environments</h2>
+<p>Shiny apps are not the only place where it is desirable to monitor computationally complex tasks. Packages like <code>ergm</code> and <code>rstan</code> use parallel computing when performing MCMC simulations. <code>ipc</code> can be used to report back intermediate results and progress to the user. Here is a function that does parallel (fake) MCMC, and provides both a progress bar and running trace plots for the chains.</p>
+<pre><code>library(parallel)
+
+
+mcmcTask &lt;- function(){
+  on.exit(q$destroy())
+  nchains &lt;- min(4, detectCores() - 1)
+  q &lt;- queue()
+  prog &lt;- 1
+  pb &lt;- txtProgressBar(min = 0, max = nchains * 10, style=3)
+  res &lt;- list()
+  chains &lt;- list()
+  for(i in 1:nchains){
+    # Run each chain in parallel
+    res[[i]] &lt;- mcparallel({
+      chain &lt;- c()
+      for(j in 1:10){
+        chain &lt;- c(chain, rnorm(100))
+        
+        # Send the current chain to the main thread
+        q$producer$fireEval(chains[[i]] &lt;- chain, list(i=i,chain=chain))
+        # Update progress
+        q$producer$fireEval(prog &lt;- prog + 1)
+        
+        Sys.sleep(runif(1)*5)
+      }
+      chain
+    })
+  }
+  
+  # Monitor progress
+  while(prog &lt; nchains * 10){
+    q$consumer$consume()
+    setTxtProgressBar(pb, prog)
+    par(mfrow=c(2,ceiling(nchains / 2)))
+    for(j in seq_along(chains)) 
+      if(length(chains[[j]]) &gt; 1) 
+        plot(chains[[j]], main=paste(&quot;Trace Plot for MCMC chain&quot;, j))
+    Sys.sleep(2)
+  }
+  close(pb)
+  mccollect(res)
+}
+
+chains &lt;- mcmcTask()</code></pre>
 </div>
 
 
