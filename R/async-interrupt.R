@@ -49,22 +49,29 @@ AsyncInterruptor <- R6Class(
     queue=NULL
   ),
   public = list(
+    #' @description Create the object
+    #' @param queue The underlying queue object to use for interruption
     initialize = function(queue=shinyQueue()){
       private$queue <- queue
     },
 
+    #' @description signal an error
+    #' @param msg The error message
     interrupt = function(msg="Signaled Interrupt"){
       private$queue$producer$fireInterrupt(msg)
     },
 
+    #' @description Execute any interruptions that have been signaled
     execInterrupts = function(){
       private$queue$consumer$consume()
     },
 
+    #' @description Get any interruptions that have been signaled without throwing them as errors
     getInterrupts = function(){
       private$queue$consumer$consume(throwErrors=FALSE)
     },
 
+    #' @description Cleans up object after use
     destroy = function(){
       private$queue$destroy()
     }
@@ -83,6 +90,8 @@ AsyncInterruptor <- R6Class(
 #' (with \code{AsyncInterruptor}). However, for cases where long running code is
 #' in an external library for which you don't have control, this can be the only way
 #' to terminate the execution.
+#'
+#' Note that multicore is not supported on Windows machines or within RStudio.
 #' @export
 stopMulticoreFuture <- function(x){
   if(!inherits(x,"MulticoreFuture")){
